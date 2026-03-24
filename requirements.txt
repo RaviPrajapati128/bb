@@ -1,4 +1,4 @@
-pandas
-streamlit
-sqlite3-binary
-
+pygments==2.19.2
+markdown-it-py==4.0.0
+mdurl==0.1.2
+rich==14.3.3
