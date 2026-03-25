@@ -294,7 +294,7 @@ else:
         
         c1, c2 = st.columns(2)
         s_bg = c1.selectbox("Filter by Blood Group", ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
-        s_city = c2.selectbox("Filter by City", ["Ahmedabad", "Gandhinagar", "Surat", "Rajkot", "Mumbai"])
+        s_city = c2.selectbox("Filter by City", ["","Ahmedabad", "Gandhinagar", "Surat", "Rajkot"])
         
         # Search Queries
         res_d = pd.read_sql("SELECT Name, Contact, BloodGroup, City FROM donors WHERE BloodGroup=? AND City=?", conn, params=(s_bg, s_city))
