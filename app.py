@@ -136,7 +136,7 @@ else:
         st.session_state.login = False
         st.rerun()
 
-    st.markdown("<h1 class='main-title'>🩸 VitalFlow Management System</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-title'>🏥 VitalFlow: Smart Blood Bank</h1>", unsafe_allow_html=True)
 
     if admin_mode:
         t1, t2, t3, t4, t5, t6 = st.tabs(["Home", "Donors", "Requests", "Hospitals", "Inventory", "Transactions"])
