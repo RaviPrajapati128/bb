@@ -12,7 +12,7 @@ c = conn.cursor()
 
 def init_db():
     """Initializes all required tables with correct schemas."""
-    c.execute("CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY, password TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY, password TEXT, role TEXT)")
     
     c.execute("""CREATE TABLE IF NOT EXISTS donors (
                 DonorID INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, Age INTEGER, 
@@ -53,33 +53,23 @@ def check_hashes(password, hashed_text):
     return False
 
 # ---------- HELPER FUNCTIONS ----------
-def add_user(u, p):
-    """Securely adds a user with a hashed password."""
+def add_user(u, p, role="user"):
+    """Securely adds a user with a hashed password and role."""
     hashed_p = make_hashes(p)
     try:
-        c.execute("INSERT INTO users(username, password) VALUES (?,?)", (u, hashed_p))
+        c.execute("INSERT INTO users(username, password, role) VALUES (?,?,?)", (u, hashed_p, role))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
         return False
 
 def login_user(u, p):
-    """Verifies user credentials using hashing."""
-    c.execute("SELECT password FROM users WHERE username=?", (u,))
+    """Verifies user credentials using hashing and returns role."""
+    c.execute("SELECT password, role FROM users WHERE username=?", (u,))
     data = c.fetchone()
-    if data:
-        return check_hashes(p, data[0])
-    return False
-
-def delete_record(table, id_column, id_val):
-    """Generic function to delete records safely."""
-    try:
-        c.execute(f"DELETE FROM {table} WHERE {id_column} = ?", (id_val,))
-        conn.commit()
-        return True
-    except Exception as e:
-        st.error(f"Error: {e}")
-        return False
+    if data and check_hashes(p, data[0]):
+        return data[1]  # return role
+    return None
 
 # ---------- UI CONFIG ----------
 st.set_page_config(page_title="Vital Flow", layout="wide", page_icon="🩸")
@@ -106,10 +96,12 @@ if not st.session_state.login:
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
-            if login_user(u, p):
+            role = login_user(u, p)
+            if role:
                 st.session_state.login = True
                 st.session_state.user = u
-                st.success(f"Welcome back, {u}!")
+                st.session_state.role = role
+                st.success(f"Welcome back, {u} ({role})!")
                 st.rerun()
             else:
                 st.error("Invalid Username or Password")
@@ -117,20 +109,28 @@ if not st.session_state.login:
     with tab_signup:
         new_u = st.text_input("New Username")
         new_p = st.text_input("New Password", type="password")
+        role = st.selectbox("Role", ["user", "admin"])  # allow choosing role
+        age = st.number_input("Age", 18, 65)
+        bg = st.selectbox("Blood Group", ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
+        city = st.selectbox("City",["","Ahmedabad", "Gandhinagar", "Surat", "Rajkot"])
+        contact = st.text_input("Contact Number")
+        gender = st.radio("Gender", ["Male", "Female", "Other"], horizontal=True)
         if st.button("Create Account", use_container_width=True):
             if new_u and new_p:
-                if add_user(new_u, new_p):
+                if add_user(new_u, new_p, role):
                     st.success("Account created successfully! Please switch to Login tab.")
+                    if role == "user":  # only normal users are auto-added as donors
+                        c.execute("INSERT INTO donors (Name, Age, Gender, BloodGroup, Contact, DonatedDate, City) VALUES (?,?,?,?,?,?,?)",
+                                      (new_u, age, gender, bg, contact, datetime.date.today(), city))
+                        conn.commit()
                 else:
                     st.error("Username already exists. Please choose another.")
             else:
                 st.warning("Username and Password cannot be empty.")
 
-
 # ---------- MAIN APP ----------
 else:
-    st.sidebar.success(f"👋 Logged in as: {st.session_state.user}")
-    admin_mode = st.sidebar.toggle("🧑‍⚕️ Admin Dashboard")
+    st.sidebar.success(f"👋 Logged in as: {st.session_state.user} ({st.session_state.role})")
 
     if st.sidebar.button("Logout", use_container_width=True):
         st.session_state.login = False
@@ -138,8 +138,11 @@ else:
 
     st.markdown("<h1 class='main-title'>🏥 VitalFlow: Smart Blood Bank</h1>", unsafe_allow_html=True)
 
-    if admin_mode:
+    # Role-based access without toggle
+    if st.session_state.role == "admin":
+        # --- Admin Dashboard Tabs ---
         t1, t2, t3, t4, t5, t6 = st.tabs(["Home", "Donors", "Requests", "Hospitals", "Inventory", "Transactions"])
+        # (keep your existing admin tab code here unchanged)
 
         # TAB 1: HOME
         with t1:
@@ -165,7 +168,7 @@ else:
                     d_name = col_a.text_input("Full Name")
                     d_age = col_a.number_input("Age", 18, 65)
                     d_bg = col_b.selectbox("Blood Group", ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
-                    d_city = col_b.text_input("City")
+                    d_city = col_b.selectbox("City",["","Ahmedabad", "Gandhinagar", "Surat", "Rajkot"])
                     d_contact = col_a.text_input("Contact Number")
                     d_gender = col_b.radio("Gender", ["Male", "Female", "Other"], horizontal=True)
                     if st.form_submit_button("Add Donor"):
@@ -197,7 +200,7 @@ else:
                     r_name = col_a.text_input("Full Name")
                     r_age = col_a.number_input("Age", 18, 65)
                     r_bg = col_b.selectbox("Blood Group", ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
-                    r_city = col_b.text_input("City")
+                    r_city = col_b.selectbox("City",["","Ahmedabad", "Gandhinagar", "Surat", "Rajkot"])
                     r_contact = col_a.text_input("Contact Number")
                     r_gender = col_b.radio("Gender", ["Male", "Female", "Other"], horizontal=True)
                     if st.form_submit_button("Add Request"):
