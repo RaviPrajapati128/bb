@@ -291,30 +291,98 @@ else:
                         st.rerun()
 
     else:
-        st.divider()
-# ---------- PUBLIC SEARCH VIEW (UPDATED) ----------
-        st.subheader("🔍 Public Dashboard")
-        
-        c1, c2 = st.columns(2)
-        s_bg = c1.selectbox("Filter by Blood Group", ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
-        s_city = c2.selectbox("Filter by City", ["","Ahmedabad", "Gandhinagar", "Surat", "Rajkot"])
-        
-        # Search Queries
-        res_d = pd.read_sql("SELECT Name, Contact, BloodGroup, City FROM donors WHERE BloodGroup=? AND City=?", conn, params=(s_bg, s_city))
-        res_i = pd.read_sql("SELECT BloodGroup, Quantity, ExpiryDate FROM inventory WHERE BloodGroup=? AND QualityStatus != 'Expired'", conn, params=(s_bg,))
-        res_r = pd.read_sql("SELECT Name, BloodGroup, City, RequestDate FROM recipients WHERE BloodGroup=? AND City=?", conn, params=(s_bg, s_city))
-
-        col_left, col_right = st.columns(2)
-        with col_left:
-            st.write("### 🩸 Available Donors")
-            if not res_d.empty: st.table(res_d)
-            else: st.info("No individual donors found for this selection.")
+            # ---------- USER HOME ----------
+            st.subheader(f"👋 Welcome back, {st.session_state.user}!")
             
-            st.write("### 📢 Active Blood Requests")
-            if not res_r.empty: st.table(res_r)
-            else: st.success("No active requests for this blood group in your city.")
+            # Fetch current user data
+            user_data = pd.read_sql("SELECT * FROM donors WHERE Name = ?", conn, params=(st.session_state.user,))
+            
+            if not user_data.empty:
+                row = user_data.iloc[0]
+                
+                # --- PROFILE CARD ---
+                with st.container(border=True):
+                    col_img, col_info, col_stats = st.columns([1, 3, 2])
+                    
+                    with col_img:
+                        # Generic Avatar based on Gender
+                        avatar = "👨" if row['Gender'] == "Male" else "👩" if row['Gender'] == "Female" else "👤"
+                        st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin:0;'>{avatar}</h1>", unsafe_allow_html=True)
+                    
+                    with col_info:
+                        st.markdown(f"### {row['Name']}")
+                        st.markdown(f"**Blood Group:** :red[{row['BloodGroup']}] | **Age:** {row['Age']}")
+                        st.markdown(f"📍 {row['City']} | 📞 {row['Contact']}")
+                    
+                    with col_stats:
+                        st.write("**Account Status**")
+                        st.success("✅ Active Donor")
+                        # Button to trigger the update form (below)
+                        if st.button("Edit Profile", use_container_width=True):
+                            st.session_state.edit_mode = True
+    
+                # --- HIDDEN UPDATE FORM (Toggles on button click) ---
+                if st.session_state.get('edit_mode', False):
+                    with st.expander("Update Your Information", expanded=True):
+                        with st.form("update_profile_form"):
+                            c1, c2 = st.columns(2)
+                            u_age = c1.number_input("Age", 18, 65, int(row['Age']))
+                            u_bg = c2.selectbox("Blood Group", ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"], 
+                                                 index=["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].index(row['BloodGroup']))
+                            u_city = c1.selectbox("City", ["Ahmedabad", "Gandhinagar", "Surat", "Rajkot"], 
+                                                 index=["Ahmedabad", "Gandhinagar", "Surat", "Rajkot"].index(row['City']) if row['City'] in ["Ahmedabad", "Gandhinagar", "Surat", "Rajkot"] else 0)
+                            u_contact = c2.text_input("Contact Number", row['Contact'])
+                            u_gender = c1.radio("Gender", ["Male", "Female", "Other"], 
+                                                 index=["Male", "Female", "Other"].index(row['Gender']), horizontal=True)
+                            
+                            cb1, cb2 = st.columns(2)
+                            if cb1.form_submit_button("Save Changes", use_container_width=True):
+                                c.execute("""UPDATE donors SET Age=?, BloodGroup=?, City=?, Contact=?, Gender=? 
+                                           WHERE Name=?""", (u_age, u_bg, u_city, u_contact, u_gender, st.session_state.user))
+                                conn.commit()
+                                st.session_state.edit_mode = False
+                                st.success("Profile updated!")
+                                st.rerun()
+                            if cb2.form_submit_button("Cancel", use_container_width=True):
+                                st.session_state.edit_mode = False
+                                st.rerun()
 
-        with col_right:
-            st.write("### 📦 In-House Stock Status")
-            if not res_i.empty: st.table(res_i)
-            else: st.warning("Stock currently unavailable for this blood group.")
+            st.divider()
+        # ... (Rest of your Public Dashboard code) ...
+
+            # ---------- SEARCH DASHBOARD ----------
+            st.subheader("🔍 Find Blood & Donors")
+            
+            c1, c2 = st.columns(2)
+            s_bg = c1.selectbox("Filter by Blood Group", ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
+            s_city = c2.selectbox("Filter by City", ["Ahmedabad", "Gandhinagar", "Surat", "Rajkot"])
+            
+            # Data Retrieval
+            res_d = pd.read_sql("SELECT Name, Contact, BloodGroup, City FROM donors WHERE BloodGroup=? AND City=? AND Name != ?", 
+                                conn, params=(s_bg, s_city, st.session_state.user))
+            res_i = pd.read_sql("SELECT BloodGroup, Quantity, ExpiryDate FROM inventory WHERE BloodGroup=? AND QualityStatus != 'Expired'", 
+                                conn, params=(s_bg,))
+            res_r = pd.read_sql("SELECT Name, BloodGroup, City, RequestDate FROM recipients WHERE BloodGroup=? AND City=?", 
+                                conn, params=(s_bg, s_city))
+    
+            col_left, col_right = st.columns(2)
+            
+            with col_left:
+                st.markdown("### 🩸 Available Donors")
+                if not res_d.empty: 
+                    st.dataframe(res_d, use_container_width=True, hide_index=True)
+                else: 
+                    st.info("No other donors found for this selection.")
+                
+                st.markdown("### 📢 Active Requests")
+                if not res_r.empty: 
+                    st.dataframe(res_r, use_container_width=True, hide_index=True)
+                else: 
+                    st.success("No active requests in this city.")
+    
+            with col_right:
+                st.markdown("### 📦 Bank Stock Status")
+                if not res_i.empty: 
+                    st.table(res_i)
+                else: 
+                    st.warning("Stock currently unavailable in the central bank.")
